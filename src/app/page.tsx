@@ -34,7 +34,7 @@ export default function Home() {
       // 2. Загружаем файл напрямую в Object Storage
       setMsg("Uploading to storage...");
       await fetch(url, {
-        method: "PUT",
+        method: "POST",
         body: file,
         headers: {
           "Content-Type": file.type,
