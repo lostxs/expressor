@@ -17,45 +17,57 @@ export default function Home() {
     setMsg("Preparing upload...");
 
     try {
-      // 1. Получаем presigned URL
+      // 1. Получаем presigned POST URL и поля
       const presignRes = await fetch("/api/presign", {
         method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           filename: file.name,
           contentType: file.type,
         }),
-        headers: {
-          "Content-Type": "application/json",
-        },
       });
 
+      if (!presignRes.ok) throw new Error("Failed to get presigned URL");
       const { url, key } = await presignRes.json();
 
-      // 2. Загружаем файл напрямую в Object Storage
+      // 2. Создаем FormData с полями и файлом
+      const formData = new FormData();
+      Object.entries(url.fields as Record<string, string>).forEach(([k, v]) => {
+        formData.append(k, v);
+      });
+      formData.append("file", file);
+
+      // 3. Загружаем файл напрямую в Yandex Object Storage
       setMsg("Uploading to storage...");
-      await fetch(url, {
+      const uploadRes = await fetch(url.url, {
         method: "POST",
-        body: file,
-        headers: {
-          "Content-Type": file.type,
-        },
+        body: formData,
       });
 
-      // 3. Триггерим обработку через QStash
+      if (!uploadRes.ok) {
+        const text = await uploadRes.text();
+        throw new Error(`Upload failed: ${uploadRes.status} ${text}`);
+      }
+
+      // 4. Триггерим дальнейшую обработку
       setMsg("Triggering processing...");
       const triggerRes = await fetch("/api/trigger", {
         method: "POST",
-        body: JSON.stringify({ fileKey: key }),
         headers: {
           "Content-Type": "application/json",
         },
+        body: JSON.stringify({ fileKey: key }),
       });
+
+      if (!triggerRes.ok) throw new Error("Triggering failed");
 
       const data = await triggerRes.json();
       setMsg(`✅ Queued processing. QStash ID: ${data.qstashMessageId}`);
     } catch (err) {
       console.error(err);
-      setMsg("❌ Upload or processing failed.");
+      setMsg(`❌ Upload or processing failed: ${err}`);
     } finally {
       setLoading(false);
     }
