@@ -11,6 +11,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import { Client } from "@upstash/qstash";
 
+export const runtime = "nodejs";
+
 const client = new Client({ token: process.env.QSTASH_TOKEN! });
 
 export async function POST(req: NextRequest) {
