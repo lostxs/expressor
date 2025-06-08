@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import axios from "axios";
 
 export default function Home() {
   const [loading, setLoading] = useState(false);
@@ -17,7 +18,7 @@ export default function Home() {
     setMsg("Preparing upload...");
 
     try {
-      // 1. Получаем presigned POST URL и поля
+      // 1. Получаем presigned POST URL
       const presignRes = await fetch("/api/presign", {
         method: "POST",
         headers: {
@@ -32,26 +33,28 @@ export default function Home() {
       if (!presignRes.ok) throw new Error("Failed to get presigned URL");
       const { url, key } = await presignRes.json();
 
-      // 2. Создаем FormData с полями и файлом
+      // 2. Собираем FormData
       const formData = new FormData();
       Object.entries(url.fields as Record<string, string>).forEach(([k, v]) => {
         formData.append(k, v);
       });
       formData.append("file", file);
 
-      // 3. Загружаем файл напрямую в Yandex Object Storage
-      setMsg("Uploading to storage...");
-      const uploadRes = await fetch(url.url, {
-        method: "POST",
-        body: formData,
+      // 3. Загружаем файл с прогрессом
+      setMsg("Uploading to storage... 0%");
+      await axios.post(url.url, formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+        onUploadProgress: (progressEvent) => {
+          if (progressEvent.total) {
+            const percent = Math.round(
+              (progressEvent.loaded * 100) / progressEvent.total
+            );
+            setMsg(`Uploading to storage... ${percent}%`);
+          }
+        },
       });
 
-      if (!uploadRes.ok) {
-        const text = await uploadRes.text();
-        throw new Error(`Upload failed: ${uploadRes.status} ${text}`);
-      }
-
-      // 4. Триггерим дальнейшую обработку
+      // 4. Триггерим обработку
       setMsg("Triggering processing...");
       const triggerRes = await fetch("/api/trigger", {
         method: "POST",
@@ -91,6 +94,13 @@ export default function Home() {
       >
         {loading ? "Uploading..." : "Upload & Process"}
       </button>
+
+      <div className="w-full bg-gray-200 rounded h-2 mt-2">
+        <div
+          className="bg-blue-600 h-2 rounded"
+          style={{ width: msg.includes("%") ? msg.match(/\d+%/)?.[0] : "0%" }}
+        ></div>
+      </div>
 
       <p className="mt-4 text-sm text-gray-700">{msg}</p>
     </div>
