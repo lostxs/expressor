@@ -1,7 +1,7 @@
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner";
+import { S3Client } from "@aws-sdk/client-s3";
+import { createPresignedPost } from "@aws-sdk/s3-presigned-post";
 
-const s3 = new S3Client({
+const client = new S3Client({
   region: "ru-central1",
   endpoint: "https://storage.yandexcloud.net",
   credentials: {
@@ -10,17 +10,18 @@ const s3 = new S3Client({
   },
 });
 
+const maxSize = 10 * 1024 * 1024;
+
 export async function POST(req: Request) {
-  const { filename, contentType } = await req.json();
+  const { filename } = await req.json();
   const key = `uploads/${Date.now()}-${filename}`;
 
-  const command = new PutObjectCommand({
+  const url = await createPresignedPost(client, {
     Bucket: process.env.YC_BUCKET!,
     Key: key,
-    ContentType: contentType,
+    Conditions: [["content-length-range", 1, maxSize]],
+    Expires: 3600,
   });
 
-  const url = await getSignedUrl(s3, command, { expiresIn: 300 });
-
-  return Response.json({ url, key });
+  return Response.json({ key, url });
 }
