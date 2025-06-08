@@ -14,24 +14,48 @@ export default function Home() {
     }
 
     setLoading(true);
-    setMsg("Uploading...");
-
-    const formData = new FormData();
-    formData.append("file", file);
+    setMsg("Preparing upload...");
 
     try {
-      const res = await fetch("/api/upload", {
+      // 1. Получаем presigned URL
+      const presignRes = await fetch("/api/presign", {
         method: "POST",
-        body: formData,
+        body: JSON.stringify({
+          filename: file.name,
+          contentType: file.type,
+        }),
+        headers: {
+          "Content-Type": "application/json",
+        },
       });
 
-      if (!res.ok) throw new Error("Upload failed");
+      const { url, key } = await presignRes.json();
 
-      const data = await res.json();
+      // 2. Загружаем файл напрямую в Object Storage
+      setMsg("Uploading to storage...");
+      await fetch(url, {
+        method: "PUT",
+        body: file,
+        headers: {
+          "Content-Type": file.type,
+        },
+      });
+
+      // 3. Триггерим обработку через QStash
+      setMsg("Triggering processing...");
+      const triggerRes = await fetch("/api/trigger", {
+        method: "POST",
+        body: JSON.stringify({ fileKey: key }),
+        headers: {
+          "Content-Type": "application/json",
+        },
+      });
+
+      const data = await triggerRes.json();
       setMsg(`✅ Queued processing. QStash ID: ${data.qstashMessageId}`);
     } catch (err) {
       console.error(err);
-      setMsg("❌ Failed to upload and queue processing.");
+      setMsg("❌ Upload or processing failed.");
     } finally {
       setLoading(false);
     }
